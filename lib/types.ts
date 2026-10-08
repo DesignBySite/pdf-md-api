@@ -8,6 +8,7 @@
 /** Recognized API error codes returned in failure envelopes. */
 export type ApiErrorCode =
   | 'invalid_url'
+  | 'invalid_json'
   | 'fetch_failed'
   | 'not_pdf'
   | 'too_large'
