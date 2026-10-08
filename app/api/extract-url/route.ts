@@ -1,51 +1,66 @@
+import { MAX_PDF_BYTES, PDF_MAGIC } from '@/lib/errors';
 import {
-    apiError,
-    MAX_PDF_BYTES, PDF_MAGIC
-} from '@/lib/errors';
+    fetchFailedError,
+    invalidUrlError,
+    notPdfError,
+    tooLargeError,
+} from '@/lib/error-factories';
 import { ApiSuccess, ExtractOptions } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
 /** Parse and validate the JSON request body shape. */
-const parseBody = async (request: Request): Promise<Record<string, unknown> | null> => {
+const parseBody = async (request: Request): Promise<Record<string, unknown> | Response> => {
+
     const rawJson = await request.json() as unknown;
-    if (typeof rawJson !== 'object' || rawJson === null) return null;
+
+    if (typeof rawJson !== 'object' || rawJson === null) {
+        return invalidUrlError();
+    }
+
     return rawJson as Record<string, unknown>;
 };
 
 /** Validate that a value is a valid http(s) URL string. */
-const extractUrl = (value: unknown): string | null => {
-    if (typeof value !== 'string') return null;
+const extractUrl = (value: unknown): string | Response => {
+
+    if (typeof value !== 'string') {
+        return invalidUrlError();
+    }
+
     try {
         const url = new URL(value);
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return invalidUrlError();
+        }
+
         return url.href;
     } catch {
-        return null;
+        return invalidUrlError();
     }
 };
 
+const checkContentLength = (response: Response): Response | null => {
+    const contentLength = response.headers.get('content-length');
+
+    const length = contentLength ? parseInt(contentLength, 10) : null;
+    const parsedLength = length !== null && !Number.isNaN(length) ? length : null;
+
+    if (parsedLength !== null && parsedLength > MAX_PDF_BYTES) {
+        return tooLargeError();
+    }
+    return null;
+}
+
 /** Accept a PDF URL, validate and download it, then return a stub extraction result. */
 export async function POST(request: Request): Promise<Response> {
+
     const body = await parseBody(request);
-    if (!body) {
-        return apiError(
-            400,
-            'invalid_url',
-            'Request body must be a JSON object.',
-            'Send { "url": "https://example.com/file.pdf" }.',
-        );
-    }
+    if (body instanceof Response) return body;
 
     const url = extractUrl(body.url);
-    if (!url) {
-        return apiError(
-            400,
-            'invalid_url',
-            'url is required and must be a valid http:// or https:// URL.',
-            'Check the URL scheme and try again.',
-        );
-    }
+    if (url instanceof Response) return url;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10_000);
@@ -54,23 +69,15 @@ export async function POST(request: Request): Promise<Response> {
         const response = await fetch(url, { signal: controller.signal });
 
         if (!response.ok) {
-            return apiError(
-                502,
-                'fetch_failed',
-                `Upstream returned status ${response.status}.`,
-                'Verify the URL points to an accessible PDF.',
-            );
+            return fetchFailedError();
         }
 
-        // TODO: validate Content-Length, stream-read with size guard, magic check, return stub
+        const contentCheck = checkContentLength(response);
+        if (contentCheck instanceof Response) return contentCheck
+
     } catch (error) {
         console.error('Fetch failed for URL extraction:', error);
-        return apiError(
-            502,
-            'fetch_failed',
-            'Could not fetch the URL within 10 seconds or the upstream refused the connection.',
-            'Ensure the URL is reachable and returns a PDF quickly.',
-        );
+        return fetchFailedError();
     } finally {
         clearTimeout(timeoutId);
     }
