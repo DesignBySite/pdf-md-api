@@ -1,10 +1,38 @@
+/**
+ * Route-specific helpers for /api/extract-url.
+ */
+
 import { MAX_PDF_BYTES, PDF_MAGIC } from '@/lib/errors';
 import {
   fetchFailedError,
-  notPdfError,
+  invalidUrlError,
   tooLargeError,
-  invalidUrlError
 } from '@/lib/error-factories';
+
+/** Parse and validate the JSON request body shape. */
+export const parseBody = async (request: Request): Promise<Record<string, unknown> | Response> => {
+  const rawJson = await request.json() as unknown;
+  if (typeof rawJson !== 'object' || rawJson === null) {
+    return invalidUrlError();
+  }
+  return rawJson as Record<string, unknown>;
+};
+
+/** Validate that a value is a valid http(s) URL string. */
+export const extractUrl = (value: unknown): string | Response => {
+  if (typeof value !== 'string') {
+    return invalidUrlError();
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return invalidUrlError();
+    }
+    return url.href;
+  } catch {
+    return invalidUrlError();
+  }
+};
 
 /** Reject early when Content-Length declares a payload over the limit. */
 export const checkContentLength = (response: Response): Response | null => {
@@ -22,10 +50,7 @@ export const checkContentLength = (response: Response): Response | null => {
 /** Read all chunks from a stream reader while enforcing the size limit. */
 export const readChunks = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
-): Promise<{
-  byteChunks: Uint8Array[];
-  totalBytesReceived: number
-} | Response> => {
+): Promise<{ byteChunks: Uint8Array[]; totalBytesReceived: number } | Response> => {
   const byteChunks: Uint8Array[] = [];
   let totalBytesReceived = 0;
 
@@ -71,52 +96,9 @@ export const readPdfBytes = async (response: Response): Promise<Uint8Array | Res
   return assembleChunks(result.byteChunks, result.totalBytesReceived);
 };
 
-/** Verify the downloaded bytes start with the PDF magic signature. */
-export const checkMagicBytes = (pdfBytes: Uint8Array): Response | null => {
-  const magic = new TextDecoder().decode(pdfBytes.slice(0, PDF_MAGIC.length));
-
-  if (magic !== PDF_MAGIC) {
-    return notPdfError();
-  }
-
-  return null;
-};
-
-/** Parse and validate the JSON request body shape. */
-export const parseBody = async (request: Request): Promise<Record<string, unknown> | Response> => {
-
-  const rawJson = await request.json() as unknown;
-
-  if (typeof rawJson !== 'object' || rawJson === null) {
-    return invalidUrlError();
-  }
-
-  return rawJson as Record<string, unknown>;
-};
-
-/** Validate that a value is a valid http(s) URL string. */
-export const extractUrl = (value: unknown): string | Response => {
-
-  if (typeof value !== 'string') {
-    return invalidUrlError();
-  }
-
-  try {
-    const url = new URL(value);
-
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return invalidUrlError();
-    }
-
-    return url.href;
-  } catch {
-    return invalidUrlError();
-  }
-};
-
 /** Build the Phase-A stub success envelope for a validated PDF URL. */
-export const buildStubResponse = (url: string, bytesReceived: number, options: unknown): Response => {
-  return Response.json({
+export const buildStubResponse = (url: string, bytesReceived: number, options: unknown): Response =>
+  Response.json({
     success: true,
     data: {
       stub: true,
@@ -125,4 +107,3 @@ export const buildStubResponse = (url: string, bytesReceived: number, options: u
       options,
     },
   });
-};
