@@ -1,11 +1,11 @@
+import { checkMagicBytes } from '@/lib/pdf/magic';
 import {
     checkContentLength,
-    checkMagicBytes,
     readPdfBytes,
     parseBody,
     extractUrl,
     buildStubResponse
-} from '@/lib/pdf/fetch-helpers';
+} from './helpers';
 
 import { fetchFailedError } from '@/lib/error-factories';
 
