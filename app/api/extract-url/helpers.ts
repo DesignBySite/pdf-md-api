@@ -8,6 +8,7 @@ import {
   invalidUrlError,
   tooLargeError,
 } from '@/lib/error-factories';
+import { ExtractOptions, ExtractResult } from '@/lib/types';
 
 /** Parse and validate the JSON request body shape. */
 export const parseBody = async (request: Request): Promise<Record<string, unknown> | Response> => {
@@ -16,6 +17,19 @@ export const parseBody = async (request: Request): Promise<Record<string, unknow
     return invalidUrlError();
   }
   return rawJson as Record<string, unknown>;
+};
+
+/** Extract the optional ExtractOptions from the raw body value. */
+export const parseOptions = (raw: unknown): ExtractOptions | undefined => {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
+  }
+  const body = raw as Record<string, unknown>;
+  const options = body.options;
+  if (typeof options !== 'object' || options === null) {
+    return undefined;
+  }
+  return options as ExtractOptions;
 };
 
 /** Validate that a value is a valid http(s) URL string. */
@@ -96,14 +110,9 @@ export const readPdfBytes = async (response: Response): Promise<Uint8Array | Res
   return assembleChunks(result.byteChunks, result.totalBytesReceived);
 };
 
-/** Build the Phase-A stub success envelope for a validated PDF URL. */
-export const buildStubResponse = (url: string, bytesReceived: number, options: unknown): Response =>
+/** Build the success envelope for a validated PDF URL extraction. */
+export const buildExtractResponse = (result: ExtractResult): Response =>
   Response.json({
     success: true,
-    data: {
-      stub: true,
-      url,
-      bytesReceived,
-      options,
-    },
+    data: result,
   });
