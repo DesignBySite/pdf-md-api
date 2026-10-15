@@ -1,13 +1,15 @@
+import { fetchFailedError, scannedNoTextError } from '@/lib/error-factories';
 import { checkMagicBytes } from '@/lib/pdf/magic';
+import { extractText, toPlainText } from '@/lib/pdf/text-extractor';
+import { ExtractResult } from '@/lib/types';
 import {
+    buildExtractResponse,
     checkContentLength,
-    readPdfBytes,
-    parseBody,
     extractUrl,
-    buildStubResponse
+    parseBody,
+    parseOptions,
+    readPdfBytes,
 } from './helpers';
-
-import { fetchFailedError } from '@/lib/error-factories';
 
 export const runtime = 'nodejs';
 
@@ -27,6 +29,8 @@ export async function POST(request: Request): Promise<Response> {
         const response = await fetch(url, { signal: controller.signal });
 
         if (!response.ok) {
+            console.log(response);
+
             return fetchFailedError();
         }
 
@@ -39,7 +43,23 @@ export async function POST(request: Request): Promise<Response> {
         const magicCheck = checkMagicBytes(pdfBytes);
         if (magicCheck instanceof Response) return magicCheck;
 
-        return buildStubResponse(url, pdfBytes.length, body.options);
+        const options = parseOptions(body);
+        const extracted = await extractText(pdfBytes, options?.pages);
+        if (extracted instanceof Response) return extracted;
+
+        if (extracted.pages.every((runs) => runs.length === 0)) {
+            return scannedNoTextError();
+        }
+
+        const result: ExtractResult = {
+            markdown: toPlainText(extracted),
+            metadata: {
+                totalPageCount: extracted.totalPageCount,
+                selectedPages: extracted.pages.map((_, index) => index + 1),
+            },
+        };
+
+        return buildExtractResponse(result);
     } catch (error) {
         console.error('Fetch failed for URL extraction:', error);
         return fetchFailedError();

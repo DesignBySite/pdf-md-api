@@ -8,6 +8,7 @@ import {
   notPdfError,
   tooLargeError,
 } from '@/lib/error-factories';
+import { ExtractOptions, ExtractResult } from '@/lib/types';
 
 /** Parse the multipart body and extract the uploaded PDF file plus options. */
 export const parseUpload = async (
@@ -46,18 +47,25 @@ export const readFileBytes = async (file: File): Promise<Uint8Array | Response> 
   return new Uint8Array(bytes);
 };
 
-/** Build the Phase-A stub success envelope for a validated PDF upload. */
-export const buildStubResponse = (
-  filename: string,
-  bytesReceived: number,
-  options: unknown,
-): Response =>
+/** Build the success envelope for a validated PDF file extraction. */
+export const buildExtractResponse = (result: ExtractResult): Response =>
   Response.json({
     success: true,
-    data: {
-      stub: true,
-      filename,
-      bytesReceived,
-      options,
-    },
+    data: result,
   });
+
+/** Cast the raw options field into ExtractOptions if present. */
+export const parseOptions = (raw: unknown): ExtractOptions | undefined => {
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed as ExtractOptions;
+    }
+  } catch {
+    // ignore malformed options JSON
+  }
+  return undefined;
+};
