@@ -2,7 +2,7 @@
  * Route-specific helpers for /api/extract-url.
  */
 
-import { MAX_PDF_BYTES, PDF_MAGIC } from '@/lib/errors';
+import { MAX_PDF_BYTES } from '@/lib/errors';
 import {
   fetchFailedError,
   invalidUrlError,
